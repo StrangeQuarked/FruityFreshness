@@ -6,137 +6,128 @@
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // Buttons setup
-const int buttonUp = 32;
-const int buttonSelect = 33;
-const int buttonDown = 35;
-const int buzzer = 18;
+const int buttonUp = 8;
+const int buttonSelect = 9;
+const int buttonDown = 10;
 
 // Bounce objects for debouncing the buttons
 Bounce debouncerUp = Bounce();
 Bounce debouncerSelect = Bounce();
 Bounce debouncerDown = Bounce();
 
-String fruits[] = {"Apples", "Bananas", "Strawberries", "Oranges"};
-float fruitThresholds[] = {0.2, 0.4, 0.3, 0.5}; // ARBITRARY THRESHOLD VALUES FOR NOW
-int fruitQuantities[] = {0, 0, 0, 0}; // quantities for each fruit
-float methaneLimit = 0; // theoretical methane limit based on fruit quantities and thresholds
-                        // calculated with calculateMethaneLimit()
+// Photoresistor and light threshold
+const int photoResistorPin = A3;  // Change to an appropriate analog pin
+const int lightThreshold = 850;   // Set the light/dark threshold
 
-int currentSelection = 0; // Currently selected menu item
-bool inSelectionMode = false; // true if adjusting the quantity of a fruit
+// Menu items and quantities
+String menuItems[] = {"Apples", "Bananas", "Strawberries", "Oranges"};
+int fruitQuantities[] = {0, 0, 0, 0};
+int currentMenuItem = 0;
+bool inEditMode = false;
 
 void setup() {
-  lcd.init();                      // Initialize the LCD
-  lcd.backlight();                 // Turn on the backlight
+  Serial.begin(9600);
   
-  // Initialize buttons with internal pull-up and attach them to the debouncers
+  // Initialize the LCD
+  lcd.init();
+  lcd.backlight();
+
+  // Setup button pins with internal pull-up and debouncing
   pinMode(buttonUp, INPUT_PULLUP);
   debouncerUp.attach(buttonUp);
-  debouncerUp.interval(5); // debounce interval in milliseconds
+  debouncerUp.interval(10);
   
   pinMode(buttonSelect, INPUT_PULLUP);
   debouncerSelect.attach(buttonSelect);
-  debouncerSelect.interval(5);
-  
+  debouncerSelect.interval(10);
+
   pinMode(buttonDown, INPUT_PULLUP);
   debouncerDown.attach(buttonDown);
-  debouncerDown.interval(5);
-  
-  pinMode(buzzer, OUTPUT);         // Set buzzer pin as output
-  updateMenuDisplay();             // Display the initial menu
+  debouncerDown.interval(10);
 
-  Serial.begin(115200); // Start serial communication
+  // Set up the photoresistor pin as input (already an analog pin)
+  pinMode(photoResistorPin, INPUT);
+
+  // Initial display of menu
+  updateMenuDisplay();
 }
 
 void loop() {
-  // Update the debouncers
   debouncerUp.update();
   debouncerSelect.update();
   debouncerDown.update();
-  
-  // Button logic
+  managePowerStates();  // Manage power states based on ambient light
+
   if (debouncerSelect.fell()) {
-    handleSelectButton();
-  } 
-  
-  else if (!inSelectionMode) {
-    if (debouncerUp.fell()) {
-      navigateMenu(-1); // Navigate up
-    } 
-    else if (debouncerDown.fell()) {
-      navigateMenu(1); // Navigate down
-    }
-  } 
-  
-  else {
-    if (debouncerUp.fell()) {
-      adjustQuantity(1); // Increase quantity
-    } 
-    else if (debouncerDown.fell()) {
-      adjustQuantity(-1); // Decrease quantity
+    inEditMode = !inEditMode;
+    if (inEditMode) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Set Qty for:");
+      lcd.setCursor(0, 1);
+      lcd.print(menuItems[currentMenuItem]);
+      lcd.print(": ");
+      lcd.print(fruitQuantities[currentMenuItem]);
+    } else {
+      updateMenuDisplay();
     }
   }
 
-  // Here we would implement the methane sensor reading logic
-  // If the methane level exceeds methaneLimit, activate the buzzer
+  if (inEditMode) {
+    if (debouncerUp.fell()) {
+      fruitQuantities[currentMenuItem]++;
+      displayQuantity();
+    } else if (debouncerDown.fell() && fruitQuantities[currentMenuItem] > 0) {
+      fruitQuantities[currentMenuItem]--;
+      displayQuantity();
+    }
+  } else {
+    if (debouncerUp.fell()) {
+      navigateMenu(-1);
+    } else if (debouncerDown.fell()) {
+      navigateMenu(1);
+    }
+  }
+}
 
-  // float methaneLevel = readMethaneSensor();
-  // if (methaneLevel > methaneLimit) {
-  //   digitalWrite(buzzer, HIGH);
-  // } else {
-  //   digitalWrite(buzzer, LOW);
-  // }
+void managePowerStates() {
+  int lightLevel = analogRead(photoResistorPin);
+  Serial.println(lightLevel);
+  if (lightLevel < lightThreshold) {
+    lcd.noBacklight();  // Turn off the LCD backlight
+    // Add calls here to deactivate other power-hungry components
+  } else {
+    lcd.backlight();  // Ensure the LCD backlight is on
+    // Add calls here to reactivate those components
+  }
+}
+
+void navigateMenu(int direction) {
+  currentMenuItem += direction;
+  int numFruits = sizeof(menuItems) / sizeof(String);
+  if (currentMenuItem >= numFruits) {
+    currentMenuItem = 0;
+  } else if (currentMenuItem < 0) {
+    currentMenuItem = numFruits - 1;
+  }
+  updateMenuDisplay();
 }
 
 void updateMenuDisplay() {
   lcd.clear();
-  lcd.print("Fruit: ");
-  lcd.print(fruits[currentSelection]);
-  // Optionally, display the current quantity in selection mode
-}
-
-void navigateMenu(int direction) {
-  currentSelection += direction;
-  int numFruits = sizeof(fruits) / sizeof(fruits[0]);
-
-  if (currentSelection < 0) currentSelection = numFruits - 1;
-
-  if (currentSelection >= numFruits) currentSelection = 0;
-
-  updateMenuDisplay();
-}
-
-void handleSelectButton() {
-  inSelectionMode = !inSelectionMode; // Toggle selection mode
-  if (inSelectionMode) {
-    lcd.clear();
-    lcd.print("Set Qty for");
-    lcd.setCursor(0, 1);
-    lcd.print(fruits[currentSelection]);
-    lcd.print(": ");
-    lcd.print(fruitQuantities[currentSelection]);
-  } 
-  else {
-    calculateMethaneLimit();
-    updateMenuDisplay();
-  }
-}
-
-void adjustQuantity(int adjustment) {
-  fruitQuantities[currentSelection] += adjustment;
-  if (fruitQuantities[currentSelection] < 0) fruitQuantities[currentSelection] = 0;
+  lcd.setCursor(0, 0);
+  lcd.print("Select Fruit:");
   lcd.setCursor(0, 1);
-  lcd.print(fruits[currentSelection]);
-  lcd.print(": ");
-  lcd.print(fruitQuantities[currentSelection]);
-  lcd.print("    "); // Clear any leftover characters
+  lcd.print("> " + menuItems[currentMenuItem]);
+  lcd.setCursor(0, 3);
+  lcd.print("Qty: ");
+  lcd.print(fruitQuantities[currentMenuItem]);
 }
 
-void calculateMethaneLimit() {
-  methaneLimit = 0;
-  for (int i = 0; i < sizeof(fruits) / sizeof(fruits[0]); i++) {
-    methaneLimit += fruitQuantities[i] * fruitThresholds[i];
-    Serial.println(methaneLimit);
-  }
-  // Display or use the calculated methaneLimit as needed
+void displayQuantity() {
+  lcd.setCursor(0, 1);
+  lcd.print(menuItems[currentMenuItem]);
+  lcd.print(": ");
+  lcd.print(fruitQuantities[currentMenuItem]);
+  lcd.print("    ");
 }
