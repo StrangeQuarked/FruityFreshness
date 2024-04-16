@@ -16,23 +16,33 @@ Bounce debouncerSelect = Bounce();
 Bounce debouncerDown = Bounce();
 
 // Photoresistor and light threshold
-const int photoResistorPin = A3;  // Change to an appropriate analog pin
-const int lightThreshold = 850;   // Set the light/dark threshold
+const int photoResistorPin = 17;  
+const int lightThreshold = 850;
 
-// Menu items and quantities
+// Sensor and Buzzer setup
+const int methaneSensorPin = A2;
+const int buzzerPin = 3;
+const int methaneSensorPowerPin = 7;  // Power control pin for the methane sensor
+
+
+// Menu items, quantities, and thresholds
 String menuItems[] = {"Apples", "Bananas", "Strawberries", "Oranges"};
 int fruitQuantities[] = {0, 0, 0, 0};
+float fruitThresholds[] = {0.2, 0.5, 0.3, 0.1};  // Threshold values for each fruit
 int currentMenuItem = 0;
 bool inEditMode = false;
+
+unsigned long lastCheck = 0;  // Last time the methane level was checked
+const long interval = 1000;  // Interval at which to check methane levels (milliseconds)
+
+bool LPM = false;
 
 void setup() {
   Serial.begin(9600);
   
-  // Initialize the LCD
   lcd.init();
   lcd.backlight();
 
-  // Setup button pins with internal pull-up and debouncing
   pinMode(buttonUp, INPUT_PULLUP);
   debouncerUp.attach(buttonUp);
   debouncerUp.interval(10);
@@ -45,10 +55,13 @@ void setup() {
   debouncerDown.attach(buttonDown);
   debouncerDown.interval(10);
 
-  // Set up the photoresistor pin as input (already an analog pin)
   pinMode(photoResistorPin, INPUT);
+  pinMode(methaneSensorPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(methaneSensorPowerPin, OUTPUT);
 
-  // Initial display of menu
+  digitalWrite(methaneSensorPowerPin, HIGH);  // Initially turn on the methane sensor
+
   updateMenuDisplay();
 }
 
@@ -56,7 +69,16 @@ void loop() {
   debouncerUp.update();
   debouncerSelect.update();
   debouncerDown.update();
-  managePowerStates();  // Manage power states based on ambient light
+  managePowerStates();
+
+  digitalWrite(methaneSensorPowerPin, LOW);  // Turn off methane sensor to save power
+
+  if (millis() - lastCheck >= interval && !LPM) {
+    digitalWrite(methaneSensorPowerPin, HIGH);  // Turn off methane sensor to save power
+    delay(100);
+    checkSensorAndAlert();
+    lastCheck = millis();
+  }
 
   if (debouncerSelect.fell()) {
     inEditMode = !inEditMode;
@@ -91,14 +113,42 @@ void loop() {
 }
 
 void managePowerStates() {
-  int lightLevel = analogRead(photoResistorPin);
-  Serial.println(lightLevel);
-  if (lightLevel < lightThreshold) {
-    lcd.noBacklight();  // Turn off the LCD backlight
-    // Add calls here to deactivate other power-hungry components
+  int lightLevel = digitalRead(photoResistorPin);
+  if (lightLevel == LOW) {
+    LPM = true;
+    lcd.noBacklight();
+    digitalWrite(methaneSensorPowerPin, LOW);  // Turn off methane sensor to save power
   } else {
-    lcd.backlight();  // Ensure the LCD backlight is on
-    // Add calls here to reactivate those components
+    LPM = false;
+    lcd.backlight();
+    digitalWrite(methaneSensorPowerPin, HIGH);  // Turn on methane sensor
+  }
+}
+
+void checkSensorAndAlert() {
+  float sensorValue = analogRead(methaneSensorPin);
+
+  Serial.print("METHANE LEVEL!!!!!!!!!!!: ");
+  Serial.print(sensorValue);
+  Serial.println();
+
+  float theoretical_limit = 0;
+
+  
+
+
+  for (int i = 0; i < sizeof(menuItems) / sizeof(menuItems[0]); i++) {
+    theoretical_limit += fruitQuantities[i] * fruitThresholds[i];
+  }
+
+  Serial.print("THEORETICAL LIMIT: ");
+  Serial.print(theoretical_limit);
+  Serial.println();
+  
+  if (sensorValue > theoretical_limit) {
+    digitalWrite(buzzerPin, HIGH);
+  } else {
+    digitalWrite(buzzerPin, LOW);
   }
 }
 
