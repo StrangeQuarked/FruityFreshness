@@ -20,9 +20,9 @@ const int photoResistorPin = 17;
 const int lightThreshold = 850;
 
 // Sensor and Buzzer setup
-const int methaneSensorPin = A2;
+const int methaneSensorPin = 15;
 const int buzzerPin = 3;
-const int methaneSensorPowerPin = 7;  // Power control pin for the methane sensor
+const int methaneSensorPowerPin = 14;  // Power control pin for the methane sensor
 
 
 // Menu items, quantities, and thresholds
@@ -75,7 +75,7 @@ void loop() {
 
   if (millis() - lastCheck >= interval && !LPM) {
     digitalWrite(methaneSensorPowerPin, HIGH);  // Turn off methane sensor to save power
-    delay(100);
+    delay(500);
     checkSensorAndAlert();
     lastCheck = millis();
   }
@@ -132,23 +132,24 @@ void checkSensorAndAlert() {
   Serial.print(sensorValue);
   Serial.println();
 
-  float theoretical_limit = 0;
+  float theoretical_limit = 400;
 
   
 
 
-  for (int i = 0; i < sizeof(menuItems) / sizeof(menuItems[0]); i++) {
+  /*for (int i = 0; i < sizeof(menuItems) / sizeof(menuItems[0]); i++) {
     theoretical_limit += fruitQuantities[i] * fruitThresholds[i];
-  }
+  }*/
 
   Serial.print("THEORETICAL LIMIT: ");
   Serial.print(theoretical_limit);
   Serial.println();
   
   if (sensorValue > theoretical_limit) {
-    digitalWrite(buzzerPin, HIGH);
-  } else {
-    digitalWrite(buzzerPin, LOW);
+    analogWrite(buzzerPin, 127);
+  } 
+  else {
+    analogWrite(buzzerPin, 0);
   }
 }
 
